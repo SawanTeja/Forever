@@ -1,5 +1,6 @@
 import { v2 as cloudinary } from "cloudinary"
 import productModel from "../models/productModel.js"
+import redis from "../config/redis.js"
 
 // function for add product
 const addProduct = async (req, res) => {
@@ -37,6 +38,10 @@ const addProduct = async (req, res) => {
 
         const product = new productModel(productData);
         await product.save()
+        
+        if (redis) {
+            await redis.del("all_products");
+        }
 
         res.json({ success: true, message: "Product Added" })
 
@@ -49,8 +54,19 @@ const addProduct = async (req, res) => {
 // function for list product
 const listProducts = async (req, res) => {
     try {
+        if (redis) {
+            const cachedProducts = await redis.get("all_products");
+            if (cachedProducts) {
+                return res.json({success: true, products: cachedProducts});
+            }
+        }
         
         const products = await productModel.find({});
+        
+        if (redis) {
+            await redis.set("all_products", products, { ex: 3600 }); // cache for 1 hour
+        }
+        
         res.json({success:true,products})
 
     } catch (error) {
@@ -64,6 +80,12 @@ const removeProduct = async (req, res) => {
     try {
         
         await productModel.findByIdAndDelete(req.body.id)
+        
+        if (redis) {
+            await redis.del("all_products");
+            await redis.del(`product:${req.body.id}`);
+        }
+        
         res.json({success:true,message:"Product Removed"})
 
     } catch (error) {
@@ -77,7 +99,20 @@ const singleProduct = async (req, res) => {
     try {
         
         const { productId } = req.body
+        
+        if (redis) {
+            const cachedProduct = await redis.get(`product:${productId}`);
+            if (cachedProduct) {
+                return res.json({success: true, product: cachedProduct});
+            }
+        }
+        
         const product = await productModel.findById(productId)
+        
+        if (redis && product) {
+            await redis.set(`product:${productId}`, product, { ex: 3600 }); // cache for 1 hour
+        }
+        
         res.json({success:true,product})
 
     } catch (error) {
