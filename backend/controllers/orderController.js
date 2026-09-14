@@ -10,10 +10,13 @@ const deliveryCharge = 10
 // gateway initialize
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY)
 
-const razorpayInstance = new razorpay({
-    key_id : process.env.RAZORPAY_KEY_ID,
-    key_secret : process.env.RAZORPAY_KEY_SECRET,
-})
+let razorpayInstance = null;
+if (process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET) {
+    razorpayInstance = new razorpay({
+        key_id : process.env.RAZORPAY_KEY_ID,
+        key_secret : process.env.RAZORPAY_KEY_SECRET,
+    })
+}
 
 // Placing orders using COD Method
 const placeOrder = async (req,res) => {
@@ -151,6 +154,10 @@ const placeOrderRazorpay = async (req,res) => {
             receipt : newOrder._id.toString()
         }
 
+        if (!razorpayInstance) {
+            return res.json({ success: false, message: "Razorpay credentials not configured" })
+        }
+
         await razorpayInstance.orders.create(options, (error,order)=>{
             if (error) {
                 console.log(error)
@@ -169,6 +176,10 @@ const verifyRazorpay = async (req,res) => {
     try {
         
         const { userId, razorpay_order_id  } = req.body
+
+        if (!razorpayInstance) {
+            return res.json({ success: false, message: "Razorpay credentials not configured" })
+        }
 
         const orderInfo = await razorpayInstance.orders.fetch(razorpay_order_id)
         if (orderInfo.status === 'paid') {

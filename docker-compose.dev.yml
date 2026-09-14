@@ -1,0 +1,96 @@
+# Docker Compose configuration for local development with Hot Module Replacement (HMR)
+# Usage: docker compose -f docker-compose.dev.yml up --build
+
+services:
+  mongo:
+    image: mongo:7.0
+    container_name: forever-mongo-dev
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_dev_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - forever-dev-network
+
+  backend:
+    image: node:20-slim
+    container_name: forever-backend-dev
+    working_dir: /app
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    environment:
+      PORT: 4000
+      MONGODB_URI: ${MONGODB_URI:-mongodb://mongo:27017}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@forever.com}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-adminpassword123}
+      JWT_SECRET: ${JWT_SECRET:-forever_dev_secret}
+      CLOUDINARY_NAME: ${CLOUDINARY_NAME:-}
+      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY:-}
+      CLOUDINARY_SECRET_KEY: ${CLOUDINARY_SECRET_KEY:-}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-}
+      RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-}
+      UPSTASH_REDIS_REST_URL: ${UPSTASH_REDIS_REST_URL:-}
+      UPSTASH_REDIS_REST_TOKEN: ${UPSTASH_REDIS_REST_TOKEN:-}
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    command: sh -c "npm install && npm run server"
+    depends_on:
+      mongo:
+        condition: service_healthy
+    networks:
+      - forever-dev-network
+
+  frontend:
+    image: node:20-alpine
+    container_name: forever-frontend-dev
+    working_dir: /app
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_BACKEND_URL: ${VITE_BACKEND_URL:-http://localhost:4000}
+      VITE_RAZORPAY_KEY_ID: ${VITE_RAZORPAY_KEY_ID:-}
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    command: sh -c "npm install && npx vite --host 0.0.0.0 --port 5173"
+    depends_on:
+      - backend
+    networks:
+      - forever-dev-network
+
+  admin:
+    image: node:20-alpine
+    container_name: forever-admin-dev
+    working_dir: /app
+    restart: unless-stopped
+    ports:
+      - "5174:5174"
+    environment:
+      VITE_BACKEND_URL: ${VITE_BACKEND_URL:-http://localhost:4000}
+    volumes:
+      - ./admin:/app
+      - /app/node_modules
+    command: sh -c "npm install && npx vite --host 0.0.0.0 --port 5174"
+    depends_on:
+      - backend
+    networks:
+      - forever-dev-network
+
+volumes:
+  mongo_dev_data:
+    driver: local
+
+networks:
+  forever-dev-network:
+    driver: bridge

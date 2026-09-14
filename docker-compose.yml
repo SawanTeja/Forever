@@ -1,0 +1,96 @@
+services:
+  # -------------------------------------------------------------
+  # MongoDB Database Service
+  # -------------------------------------------------------------
+  mongo:
+    image: mongo:7.0
+    container_name: forever-mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - forever-network
+
+  # -------------------------------------------------------------
+  # Backend Express API Service
+  # -------------------------------------------------------------
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: forever-backend
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    environment:
+      PORT: 4000
+      MONGODB_URI: ${MONGODB_URI:-mongodb://mongo:27017}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@forever.com}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-adminpassword123}
+      JWT_SECRET: ${JWT_SECRET:-forever_default_jwt_secret_change_me}
+      CLOUDINARY_NAME: ${CLOUDINARY_NAME:-}
+      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY:-}
+      CLOUDINARY_SECRET_KEY: ${CLOUDINARY_SECRET_KEY:-}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-}
+      RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-}
+      UPSTASH_REDIS_REST_URL: ${UPSTASH_REDIS_REST_URL:-}
+      UPSTASH_REDIS_REST_TOKEN: ${UPSTASH_REDIS_REST_TOKEN:-}
+    depends_on:
+      mongo:
+        condition: service_healthy
+    networks:
+      - forever-network
+
+  # -------------------------------------------------------------
+  # Customer Storefront Service (React + Vite + Nginx)
+  # -------------------------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_BACKEND_URL: ${VITE_BACKEND_URL:-http://localhost:4000}
+        VITE_RAZORPAY_KEY_ID: ${VITE_RAZORPAY_KEY_ID:-}
+    container_name: forever-frontend
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+    networks:
+      - forever-network
+
+  # -------------------------------------------------------------
+  # Admin Dashboard Service (React + Vite + Nginx)
+  # -------------------------------------------------------------
+  admin:
+    build:
+      context: ./admin
+      dockerfile: Dockerfile
+      args:
+        VITE_BACKEND_URL: ${VITE_BACKEND_URL:-http://localhost:4000}
+    container_name: forever-admin
+    restart: unless-stopped
+    ports:
+      - "5174:80"
+    depends_on:
+      - backend
+    networks:
+      - forever-network
+
+volumes:
+  mongo_data:
+    driver: local
+
+networks:
+  forever-network:
+    driver: bridge
